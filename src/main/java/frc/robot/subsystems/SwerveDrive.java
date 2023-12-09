@@ -5,6 +5,7 @@
 package frc.robot.subsystems;
 
 import static frc.robot.constants.SWERVE.DRIVE.kMaxSpeedMetersPerSecond;
+import static frc.robot.constants.SWERVE.DRIVE.kSwerveKinematics;
 import static frc.robot.utils.ModuleMap.MODULE_POSITION;
 
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
@@ -12,7 +13,6 @@ import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.Pigeon2SimState;
-import com.ctre.phoenix6.unmanaged.Unmanaged;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
@@ -110,7 +110,7 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
     m_pigeon.setYaw(0);
     m_odometry =
         new SwerveDrivePoseEstimator(
-            DRIVE.kSwerveKinematics,
+            kSwerveKinematics,
             getHeadingRotation2d(),
             getSwerveDriveModulePositionsArray(),
             new Pose2d());
@@ -167,7 +167,7 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
     }
 
     Map<MODULE_POSITION, SwerveModuleState> moduleStates =
-        ModuleMap.of(DRIVE.kSwerveKinematics.toSwerveModuleStates(chassisSpeeds));
+        ModuleMap.of(kSwerveKinematics.toSwerveModuleStates(chassisSpeeds));
 
     SwerveDriveKinematics.desaturateWheelSpeeds(
         ModuleMap.orderedValues(moduleStates, new SwerveModuleState[0]), m_currentMaxVelocity);
@@ -208,7 +208,7 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
   }
 
   public void setChassisSpeed(ChassisSpeeds chassisSpeeds) {
-    var states = DRIVE.kSwerveKinematics.toSwerveModuleStates(chassisSpeeds);
+    var states = kSwerveKinematics.toSwerveModuleStates(chassisSpeeds);
     setSwerveModuleStates(states, false);
   }
 
@@ -222,7 +222,7 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
       var transform =
           new Transform2d(DRIVE.kModuleTranslations.get(position), Rotation2d.fromDegrees(0));
       var modulePose = pose.plus(transform);
-      getSwerveModule(position).resetAngle(pose.getRotation().getDegrees());
+      getSwerveModule(position).resetTurnAngle(pose.getRotation().getDegrees());
       getSwerveModule(position).setModulePose(modulePose);
     }
   }
@@ -253,6 +253,24 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
 
   public Pose2d getPoseMeters() {
     return m_odometry.getEstimatedPosition();
+  }
+
+  public ChassisSpeeds getChassisSpeeds() {
+    return kSwerveKinematics.toChassisSpeeds(
+        m_swerveModules.get(MODULE_POSITION.FRONT_LEFT).getState(),
+        m_swerveModules.get(MODULE_POSITION.FRONT_RIGHT).getState(),
+        m_swerveModules.get(MODULE_POSITION.BACK_LEFT).getState(),
+        m_swerveModules.get(MODULE_POSITION.BACK_RIGHT).getState());
+  }
+
+  public void setChassisSpeeds(ChassisSpeeds targetSpeeds) {
+    Map<MODULE_POSITION, SwerveModuleState> moduleStates =
+        ModuleMap.of(kSwerveKinematics.toSwerveModuleStates(targetSpeeds));
+
+    SwerveDriveKinematics.desaturateWheelSpeeds(
+        ModuleMap.orderedValues(moduleStates, new SwerveModuleState[0]), m_currentMaxVelocity);
+
+    setSwerveModuleStatesAuto(moduleStates.values().toArray(new SwerveModuleState[0]));
   }
 
   public SwerveModule getSwerveModule(MODULE_POSITION modulePosition) {
@@ -360,12 +378,12 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
   private void updateSmartDashboard() {}
 
   private void updateLog() {
-    Logger.getInstance().recordOutput("Swerve/Module Init Status", getModuleInitStatus());
-    Logger.getInstance().recordOutput("Swerve/Roll Offset", getRollOffsetDegrees());
+    Logger.recordOutput("Swerve/Module Init Status", getModuleInitStatus());
+    Logger.recordOutput("Swerve/Roll Offset", getRollOffsetDegrees());
 
-    Logger.getInstance().recordOutput("Swerve/Pitch", getPitchDegrees());
-    Logger.getInstance().recordOutput("Swerve/Roll", getRollDegrees() + getRollOffsetDegrees());
-    Logger.getInstance().recordOutput("Swerve/Yaw", getHeadingDegrees());
+    Logger.recordOutput("Swerve/Pitch", getPitchDegrees());
+    Logger.recordOutput("Swerve/Roll", getRollDegrees() + getRollOffsetDegrees());
+    Logger.recordOutput("Swerve/Yaw", getHeadingDegrees());
   }
 
   @Override
@@ -379,22 +397,14 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
     updateLog();
   }
 
-  public void simulationInit() {
-    for (var module : ModuleMap.orderedValuesList(m_swerveModules)) {
-      module.simulationInit();
-    }
-  }
-
   @Override
   public void simulationPeriodic() {
     ChassisSpeeds chassisSpeed =
-        DRIVE.kSwerveKinematics.toChassisSpeeds(
+        kSwerveKinematics.toChassisSpeeds(
             ModuleMap.orderedValues(getModuleStates(), new SwerveModuleState[0]));
 
-    double dt = 0.01;
-    m_simYaw += chassisSpeed.omegaRadiansPerSecond * dt;
+    m_simYaw += chassisSpeed.omegaRadiansPerSecond * RobotTime.getTimeDelta();
 
-    Unmanaged.feedEnable(20);
     m_pigeonSim.setRawYaw(-Units.radiansToDegrees(m_simYaw));
   }
 

@@ -17,7 +17,7 @@ public final class CtreUtils {
 
     motorConfig.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
     motorConfig.Slot0.kV = 0.0;
-    motorConfig.Slot0.kP = 40;
+    motorConfig.Slot0.kP = 5.0;
     motorConfig.Slot0.kI = 0.0000;
     //    motorConfig.Slot0.integralZone = 121.904762;
     motorConfig.Slot0.kD = 0.000; // 0.0;
@@ -32,7 +32,7 @@ public final class CtreUtils {
     motorConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
 
     motorConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-    motorConfig.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+    motorConfig.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
 
     return motorConfig;
   }
@@ -58,7 +58,7 @@ public final class CtreUtils {
     motorConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.1; // TODO Adjust this later
 
     motorConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
-    motorConfig.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    motorConfig.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
 
     return motorConfig;
   }
@@ -117,34 +117,37 @@ public final class CtreUtils {
   }
 
   public static boolean configureTalonFx(TalonFX motor, TalonFXConfiguration config) {
-    StatusCode steerStatus = StatusCode.StatusCodeNotInitialized;
-    for (int i = 0; i < 5; i++) {
-      steerStatus = motor.getConfigurator().apply(config);
-      if (steerStatus.isOK()) return true;
+    StatusCode motorStatus = StatusCode.StatusCodeNotInitialized;
+    for (int i = 0; i < (RobotBase.isReal() ? 5 : 1); i++) {
+      motorStatus = motor.getConfigurator().apply(config);
+      if (motorStatus.isOK()) break;
       if (RobotBase.isReal()) Timer.delay(0.02);
     }
-    if (!steerStatus.isOK())
+    if (!motorStatus.isOK())
       System.out.println(
           "Could not apply configs to TalonFx ID: "
               + motor.getDeviceID()
               + ". Error code: "
-              + steerStatus);
-    return false;
+              + motorStatus);
+    else System.out.println("TalonFX ID: " + motor.getDeviceID() + " - Successfully configured!");
+    return motorStatus.isOK();
   }
 
   public static boolean configureCANCoder(CANcoder cancoder, CANcoderConfiguration config) {
-    StatusCode steerStatus = StatusCode.StatusCodeNotInitialized;
-    for (int i = 0; i < 5; i++) {
-      steerStatus = cancoder.getConfigurator().apply(config);
-      if (steerStatus.isOK()) return true;
+    StatusCode cancoderStatus = StatusCode.StatusCodeNotInitialized;
+    for (int i = 0; i < (RobotBase.isReal() ? 5 : 1); i++) {
+      cancoderStatus = cancoder.getConfigurator().apply(config);
+      if (cancoderStatus.isOK()) break;
       if (RobotBase.isReal()) Timer.delay(0.02);
     }
-    if (!steerStatus.isOK())
+    if (!cancoderStatus.isOK())
       System.out.println(
           "Could not apply configs to CANCoder ID: "
               + cancoder.getDeviceID()
               + ". Error code: "
-              + steerStatus);
-    return false;
+              + cancoderStatus);
+    else
+      System.out.println("CANCoder ID: " + cancoder.getDeviceID() + " - Successfully configured!");
+    return cancoderStatus.isOK();
   }
 }

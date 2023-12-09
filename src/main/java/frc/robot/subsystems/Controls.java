@@ -36,7 +36,7 @@ public class Controls extends SubsystemBase implements AutoCloseable {
    * @return Returns the current alliance color.
    */
   public static boolean getAllianceColorBoolean() {
-    return false;
+    return allianceColor == DriverStation.Alliance.Red;
   }
 
   public void setPDHChannel(boolean on) {
@@ -70,13 +70,16 @@ public class Controls extends SubsystemBase implements AutoCloseable {
    * connected to a driver station.
    */
   private void updateAllianceColor() {
-    // allianceColor = DriverStation.getAlliance();
+    allianceColor =
+        DriverStation.getAlliance().isPresent()
+            ? DriverStation.getAlliance().get()
+            : DriverStation.Alliance.Red;
   }
 
   /** Sends values to SmartDashboard */
   private void updateSmartDashboard() {
-    // allianceString.set(getAllianceColor().toString());
-    // allianceBoolean.set(getAllianceColorBoolean());
+    allianceString.set(getAllianceColor().toString());
+    allianceBoolean.set(getAllianceColorBoolean());
   }
 
   @Override

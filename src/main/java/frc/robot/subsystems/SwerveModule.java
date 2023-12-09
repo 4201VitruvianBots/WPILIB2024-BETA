@@ -7,6 +7,9 @@ package frc.robot.subsystems;
 import static frc.robot.utils.CtreUtils.configureTalonFx;
 import static frc.robot.utils.ModuleMap.MODULE_POSITION;
 
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.controls.*;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -18,28 +21,22 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.math.system.plant.DCMotor;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.simulation.*;
-import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
-import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
-import edu.wpi.first.wpilibj.smartdashboard.MechanismRoot2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.constants.SWERVE;
 import frc.robot.constants.SWERVE.DRIVE;
 import frc.robot.constants.SWERVE.MODULE;
 import frc.robot.simulation.MotorSim;
 import frc.robot.utils.CtreUtils;
 import frc.robot.utils.ModuleMap;
+import frc.robot.visualizer.SwerveModuleVisualizer;
 import org.littletonrobotics.junction.Logger;
 
 public class SwerveModule extends SubsystemBase implements AutoCloseable {
   private final ModuleMap.MODULE_POSITION m_modulePosition;
-  private final int m_moduleNumber;
   private final TalonFX m_turnMotor;
   private final TalonFX m_driveMotor;
   private final CANcoder m_angleEncoder;
@@ -51,10 +48,15 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   private SwerveModuleState m_desiredState;
 
   private final DutyCycleOut driveMotorDutyControl = new DutyCycleOut(0);
-  private final VelocityVoltage driveMotorVelocityControl = new VelocityVoltage(0);
+  private final VelocityVoltage driveVelocityControl = new VelocityVoltage(0);
   private final PositionVoltage turnPositionControl = new PositionVoltage(0);
   private final StaticBrake brakeControl = new StaticBrake();
   private final NeutralOut neutralControl = new NeutralOut();
+
+  private final StatusSignal<Double> m_drivePosition;
+  private final StatusSignal<Double> m_driveVelocity;
+  private final StatusSignal<Double> m_turnPosition;
+  private final StatusSignal<Double> m_turnVelocity;
 
   private final SimpleMotorFeedforward feedforward =
       new SimpleMotorFeedforward(
@@ -66,6 +68,7 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   private TalonFXSimState m_driveMotorSimState;
   private CANcoderSimState m_angleEncoderSimState;
 
+  private SwerveModuleVisualizer m_moduleVisualizer;
   //  private DCMotorSim m_turnMotorModel =
   //      new DCMotorSim(MODULE.kTurnGearbox, MODULE.kTurnMotorGearRatio, .001);
   //
@@ -75,17 +78,11 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   //          MODULE.kDriveGearbox, MODULE.kDriveMotorGearRatio, 0.2);
 
   private DCMotorSim m_turnMotorSim =
-      new DCMotorSim(DCMotor.getFalcon500(1), MODULE.kTurnMotorGearRatio, 0.5);
+      new DCMotorSim(MODULE.kTurnGearbox, MODULE.kTurnMotorGearRatio, 0.5);
   //  private FlywheelSim m_driveMotorSim = new
   // FlywheelSim(LinearSystemId.identifyVelocitySystem(0.134648227, 0.002802309),
   //          MODULE.kDriveGearbox, MODULE.kDriveMotorGearRatio);
   private MotorSim m_driveMotorSim;
-
-  private double m_lastTime;
-
-  Mechanism2d moduleVisualizer = new Mechanism2d(Units.inchesToMeters(6), Units.inchesToMeters(6));
-  MechanismRoot2d moduleRoot;
-  MechanismLigament2d moduleLigament;
 
   public SwerveModule(
       MODULE_POSITION modulePosition,
@@ -94,10 +91,10 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
       CANcoder angleEncoder,
       double angleOffset) {
     m_modulePosition = modulePosition;
-    m_moduleNumber = m_modulePosition.ordinal();
     m_turnMotor = turnMotor;
     m_driveMotor = driveMotor;
     m_angleEncoder = angleEncoder;
+    m_angleOffset = RobotBase.isReal() ? angleOffset : 0;
 
     var turnMotorConfig = CtreUtils.generateTurnMotorConfig();
     turnMotorConfig.Feedback.SensorToMechanismRatio = MODULE.kTurnMotorGearRatio;
@@ -107,7 +104,14 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
     driveMotorConfig.Feedback.SensorToMechanismRatio = MODULE.kDriveMotorGearRatio;
     configureTalonFx(m_driveMotor, driveMotorConfig);
 
+    m_drivePosition = driveMotor.getPosition().clone();
+    m_driveVelocity = driveMotor.getVelocity().clone();
+    m_turnPosition = turnMotor.getPosition().clone();
+    m_turnVelocity = turnMotor.getVelocity().clone();
+
     m_lastAngle = getHeadingDegrees();
+
+    m_moduleVisualizer = new SwerveModuleVisualizer(this.getName(), DRIVE.kMaxSpeedMetersPerSecond);
 
     initSmartDashboard();
 
@@ -141,46 +145,21 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
               //          0.12872,
               0,
               0,
-              DCMotor.getFalcon500(1));
-
-      angleOffset = 0;
+              MODULE.kDriveGearbox);
     }
-    m_angleOffset = angleOffset;
     initModuleHeading();
 
-    moduleRoot =
-        moduleVisualizer.getRoot(
-            "ModuleCenter_" + m_modulePosition.ordinal(),
-            Units.inchesToMeters(3),
-            Units.inchesToMeters(3));
-    moduleLigament =
-        moduleRoot.append(
-            new MechanismLigament2d(
-                "ModuleDirection_" + m_modulePosition.ordinal(),
-                (getVelocityMetersPerSecond() / SWERVE.DRIVE.kMaxSpeedMetersPerSecond) * .75 + .25,
-                getHeadingDegrees()));
-
-    SmartDashboard.putData("SwerveModule2D_" + m_modulePosition.ordinal(), moduleVisualizer);
+    SmartDashboard.putData(
+        "SwerveModule2D_" + m_modulePosition.ordinal(), m_moduleVisualizer.getMechanism2d());
   }
 
   private void initModuleHeading() {
+    System.out.println("Config CANcoder: " + m_modulePosition.ordinal());
     var encoderConfig = CtreUtils.generateCanCoderConfig();
     encoderConfig.MagnetSensor.MagnetOffset = m_angleOffset / 360.0;
-    m_angleEncoder.getConfigurator().apply(encoderConfig);
-    if (RobotBase.isReal()) Timer.delay(0.2);
+    CtreUtils.configureCANCoder(m_angleEncoder, encoderConfig);
     m_angleEncoder.optimizeBusUtilization(255);
     resetAngleToAbsolute();
-
-    // Check if the offset was applied properly. Delay to give it some time to set
-    if (RobotBase.isReal()) {
-      Timer.delay(0.1);
-      m_initSuccess =
-          Math.abs(
-                  getHeadingDegrees()
-                      + m_angleOffset
-                      - m_angleEncoder.getAbsolutePosition().getValue())
-              < 1.0;
-    } else m_initSuccess = true;
   }
 
   public boolean getInitSuccess() {
@@ -192,21 +171,33 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   }
 
   public void resetAngleToAbsolute() {
-    resetAngle(0);
+    resetTurnAngle(0);
   }
 
-  public void resetAngle(double angle) {
-    //  double newAngle = getHeadingDegrees() - m_angleOffset + angle;
-    m_turnMotor.setPosition(angle / 360.0);
+  public void resetTurnAngle(double angle) {
+    double newAngle = getHeadingDegrees() + angle;
+
+    StatusCode turnMotorStatus = StatusCode.StatusCodeNotInitialized;
+    for (int i = 0; i < (RobotBase.isReal() ? 5 : 1); i++) {
+      turnMotorStatus = m_turnMotor.setPosition(newAngle / 360.0);
+      if (turnMotorStatus.isOK()) break;
+      if (RobotBase.isReal()) Timer.delay(0.02);
+    }
+
+    if (!turnMotorStatus.isOK()) {
+      System.out.println(
+          "Could not apply configs to Swerve Turn TalonFX: "
+              + m_turnMotor.getDeviceID()
+              + ". Error code: "
+              + turnMotorStatus);
+    }
   }
 
   public double getHeadingDegrees() {
-    //    m_turnMotor.getPosition().refresh();
-    //    m_turnMotor.getVelocity().refresh();
-    //    var position = BaseStatusSignal.getLatencyCompensatedValue(m_turnMotor.getPosition(),
-    // m_turnMotor.getVelocity());
-    //    return 360.0 * position;
-    return 360.0 * m_turnMotor.getPosition().getValue();
+    m_turnPosition.refresh();
+    m_turnVelocity.refresh();
+    return 360.0 * BaseStatusSignal.getLatencyCompensatedValue(m_turnPosition, m_turnVelocity)
+        - m_angleOffset;
   }
 
   public Rotation2d getHeadingRotation2d() {
@@ -214,11 +205,16 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   }
 
   public double getVelocityMetersPerSecond() {
-    return m_driveMotor.getVelocity().getValue() * MODULE.kWheelDiameterMeters * Math.PI;
+    m_driveVelocity.refresh();
+    return m_driveVelocity.getValue() * MODULE.kWheelDiameterMeters * Math.PI;
   }
 
-  public double getDriveMeters() {
-    return m_driveMotor.getPosition().getValue() * MODULE.kWheelDiameterMeters * Math.PI;
+  public double getDriveDistanceMeters() {
+    m_drivePosition.refresh();
+    m_driveVelocity.refresh();
+    return BaseStatusSignal.getLatencyCompensatedValue(m_drivePosition, m_driveVelocity)
+        * MODULE.kWheelDiameterMeters
+        * Math.PI;
   }
 
   public void setDesiredState(SwerveModuleState desiredState, boolean isOpenLoop) {
@@ -228,12 +224,12 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
       double percentOutput = m_desiredState.speedMetersPerSecond / DRIVE.kMaxSpeedMetersPerSecond;
       m_driveMotor.setControl(driveMotorDutyControl.withOutput(percentOutput));
     } else {
-      double velocityRPM =
+      double velocityRPS =
           m_desiredState.speedMetersPerSecond / (MODULE.kWheelDiameterMeters * Math.PI);
       m_driveMotor.setControl(
-          driveMotorVelocityControl
-              .withVelocity(velocityRPM)
-              .withFeedForward(feedforward.calculate(velocityRPM)));
+          driveVelocityControl
+              .withVelocity(velocityRPS)
+              .withFeedForward(feedforward.calculate(velocityRPS)));
     }
 
     double angle =
@@ -251,7 +247,7 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   }
 
   public SwerveModulePosition getPosition() {
-    return new SwerveModulePosition(getDriveMeters(), getHeadingRotation2d());
+    return new SwerveModulePosition(getDriveDistanceMeters(), getHeadingRotation2d());
   }
 
   public void setModulePose(Pose2d pose) {
@@ -283,14 +279,12 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   private void updateSmartDashboard() {}
 
   public void updateLog() {
-    Logger.getInstance()
-        .recordOutput(
-            "Swerve/Module[" + m_moduleNumber + "] Encoder Heading",
-            m_angleEncoder.getAbsolutePosition().getValue() * 360.0);
-    Logger.getInstance()
-        .recordOutput("Swerve/Module[" + m_moduleNumber + "] Angle Offset", m_angleOffset);
-    Logger.getInstance()
-        .recordOutput("Swerve/Module[" + m_moduleNumber + "] Motor Heading", getHeadingDegrees());
+    Logger.recordOutput(
+        "Swerve/Module[" + m_modulePosition + "] Encoder Heading",
+        m_angleEncoder.getAbsolutePosition().getValue() * 360.0);
+    Logger.recordOutput("Swerve/Module[" + m_modulePosition + "] Angle Offset", m_angleOffset);
+    Logger.recordOutput(
+        "Swerve/Module[" + m_modulePosition + "] Motor Heading", getHeadingDegrees());
   }
 
   @Override
@@ -298,13 +292,7 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
     updateSmartDashboard();
     updateLog();
 
-    moduleLigament.setLength(
-        ((getVelocityMetersPerSecond() / SWERVE.DRIVE.kMaxSpeedMetersPerSecond) * .75) + .25);
-    moduleLigament.setAngle(getHeadingDegrees());
-  }
-
-  public void simulationInit() {
-    m_lastTime = Timer.getFPGATimestamp();
+    m_moduleVisualizer.update(getState());
   }
 
   @Override
@@ -320,39 +308,22 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
     m_driveMotorSim.setInputVoltage(
         MathUtil.clamp(m_driveMotorSimState.getMotorVoltage(), -12, 12));
 
-    double currentTime = Timer.getFPGATimestamp();
-    double dt = currentTime - m_lastTime;
+    double dt = RobotTime.getTimeDelta();
     m_turnMotorSim.update(dt);
-    //    m_driveMotorSim.update(dt);
     m_driveMotorSim.run();
 
-    //    var turnVelocityRps = m_turnMotorSim.getAngularVelocityRPM() / 60.0;
-    //    var turnDistance = turnVelocityRps * dt;
-    //    var driveVelocityRps = m_driveMotorSim.getAngularVelocityRPM() *
-    // MODULE.kDriveMotorGearRatio / 60.0;
-    //    var driveDistance = driveVelocityRps * dt;
-    //
-    //    m_turnMotorSimState.addRotorPosition(turnDistance * MODULE.kTurnMotorGearRatio);
-    //    m_turnMotorSimState.setRotorVelocity(turnVelocityRps * MODULE.kTurnMotorGearRatio);
-    //    m_angleEncoderSimState.addPosition(turnDistance);
-    //    m_angleEncoderSimState.setVelocity(turnVelocityRps);
-    //    m_driveMotorSimState.setRawRotorPosition(driveDistance);
-    //    m_driveMotorSimState.setRotorVelocity(driveVelocityRps);
-
     var turnVelocityRps = m_turnMotorSim.getAngularVelocityRPM() / 60.0;
-    var turnDistance = turnVelocityRps * dt;
     var driveVelocityRps =
         m_driveMotorSim.getAngularVelocityRPM() * MODULE.kDriveMotorGearRatio / 60.0;
-    var driveDistance = driveVelocityRps * dt;
 
-    m_turnMotorSimState.addRotorPosition(turnDistance * MODULE.kTurnMotorGearRatio);
+    m_turnMotorSimState.setRawRotorPosition(
+        m_turnMotorSim.getAngularPositionRotations() * MODULE.kTurnMotorGearRatio);
     m_turnMotorSimState.setRotorVelocity(turnVelocityRps * MODULE.kTurnMotorGearRatio);
-    m_angleEncoderSimState.addPosition(turnDistance);
+    m_angleEncoderSimState.setRawPosition(m_turnMotorSim.getAngularPositionRotations());
     m_angleEncoderSimState.setVelocity(turnVelocityRps);
-    m_driveMotorSimState.addRotorPosition(driveDistance);
+    m_driveMotorSimState.setRawRotorPosition(
+        m_driveMotorSim.getAngularPositionRot() * MODULE.kDriveMotorGearRatio);
     m_driveMotorSimState.setRotorVelocity(driveVelocityRps);
-
-    m_lastTime = currentTime;
   }
 
   @SuppressWarnings("RedundantThrows")

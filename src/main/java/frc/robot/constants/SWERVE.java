@@ -47,9 +47,9 @@ public final class SWERVE {
     public static final double kI_Y = 0;
     public static final double kD_Y = 0;
 
-    public static double kP_Theta = -5.0;
+    public static double kP_Theta = 5.0;
     public static double kI_Theta = 0;
-    public static double kD_Theta = -0.5;
+    public static double kD_Theta = 0.5;
   }
 
   public static class MODULE {
@@ -59,6 +59,11 @@ public final class SWERVE {
 
     public static final DCMotor kDriveGearbox = DCMotor.getFalcon500(1);
     public static final DCMotor kTurnGearbox = DCMotor.getFalcon500(1);
+
+    public static final double kSlipCurrent = 300.0;
+    public static final double kDriveInertia = 0.001;
+    public static final double kTurnInertia = 0.00001;
+    public static final boolean kTurnInverted = true;
 
     public static final double ksDriveVoltSecondsPerMeter = 0.605 / 12;
     public static final double kvDriveVoltSecondsSquaredPerMeter = 1.72 / 12;

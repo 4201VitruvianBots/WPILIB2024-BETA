@@ -132,7 +132,8 @@ public class RobotContainer {
 
   public void initializeAutoChooser() {
     // m_autoChooser.setDefaultOption(
-    //     "SubstationThree", new SubstationThree("SubstationTwoPickup", m_swerveDrive, m_fieldSim));
+    //     "SubstationThree", new SubstationThree("SubstationTwoPickup", m_swerveDrive,
+    // m_fieldSim));
     // m_autoChooser.addOption("DriveStraight", new DriveStraight(m_swerveDrive, m_fieldSim));
     m_autoChooser.setDefaultOption("Nothing", new WaitCommand(0));
     SmartDashboard.putData("AutoChooser", m_autoChooser);
@@ -149,8 +150,6 @@ public class RobotContainer {
   }
 
   public void periodic() {
-    m_fieldSim.periodic();
-
     // Absolute definition of jank right here. Please change this before Beach Blitz
     // :nate:
     if (Math.abs((MathUtil.applyDeadband(xboxController.getLeftX(), 0.05))) > 0) {
@@ -158,7 +157,7 @@ public class RobotContainer {
     }
   }
 
-  public void simulationInit() {
-    m_swerveDrive.simulationInit();
+  public void simulationPeriodic() {
+    m_fieldSim.periodic();
   }
 }

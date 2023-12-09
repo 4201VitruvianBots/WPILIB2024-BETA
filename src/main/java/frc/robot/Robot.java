@@ -4,11 +4,19 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.Filesystem;
+import edu.wpi.first.wpilibj.PowerDistribution;
+import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import java.io.File;
+import java.util.NoSuchElementException;
+import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
+import org.littletonrobotics.junction.wpilog.WPILOGReader;
+import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 /**
  * The VM is configured to automatically run this class, and to call the functions corresponding to
@@ -22,18 +30,43 @@ public class Robot extends LoggedRobot {
   private RobotContainer m_robotContainer;
 
   public Robot() {
-    super();
-    Logger.getInstance().recordMetadata("ProjectName", "MyProject"); // Set a metadata value
+    LiveWindow.disableAllTelemetry();
+    Logger.recordMetadata("ProjectName", "WPILIB2024-BETA"); // Set a metadata value
 
-    Logger.getInstance().addDataReceiver(new NT4Publisher());
-    if (!isReal()) {
+    if (isReal()) {
+      try {
+        Logger.addDataReceiver(new WPILOGWriter("/U")); // Log to a USB stick
+      } catch (Exception e) {
+        System.out.println("\nAdvantageKit - Failed to log to USB Drive!");
+        e.printStackTrace();
+      }
+      Logger.addDataReceiver(new NT4Publisher()); // Publish data to NetworkTables
+      new PowerDistribution(
+          1, PowerDistribution.ModuleType.kRev); // Enables power distribution logging
+    } else {
       setUseTiming(false); // Run as fast as possible
+      try {
+        String logPath = LogFileUtil.findReplayLog(); // Pull the replay log from
+        //       AdvantageScope (or prompt the user)
+        Logger.setReplaySource(new WPILOGReader(logPath)); // Read replay log
+        Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_sim")));
+      } catch (NoSuchElementException e) {
+        System.out.println("\nAdvantageKit - Failed to find Replay source!");
+      } finally {
+        // Log simulation output
+        var logDirPath = Filesystem.getLaunchDirectory().getAbsoluteFile() + "\\logs";
+        var logDir = new File(logDirPath);
+        if (!logDir.exists()) {
+          logDir.mkdir();
+        }
+        Logger.addDataReceiver(new WPILOGWriter(logDir.getAbsolutePath()));
+      }
+      // Save outputs to a new log
     }
 
-    // Logger.getInstance().disableDeterministicTimestamps() // See "Deterministic Timestamps" in
-    // the "Understanding Data Flow" page
-    Logger.getInstance()
-        .start(); // Start logging! No more data receivers, replay sources, or metadata values may
+    // Logger.disableDeterministicTimestamps() // See "Deterministic Timestamps" in the
+    // "Understanding Data Flow" page
+    Logger.start(); // Start logging! No more data receivers, replay sources, or metadata values may
     // be added.
   }
   /**
@@ -87,6 +120,9 @@ public class Robot extends LoggedRobot {
   public void autonomousPeriodic() {}
 
   @Override
+  public void autonomousExit() {}
+
+  @Override
   public void teleopInit() {
     // This makes sure that the autonomous stops running when
     // teleop starts running. If you want the autonomous to
@@ -102,6 +138,9 @@ public class Robot extends LoggedRobot {
   public void teleopPeriodic() {}
 
   @Override
+  public void teleopExit() {}
+
+  @Override
   public void testInit() {
     // Cancels all running commands at the start of test mode.
     CommandScheduler.getInstance().cancelAll();
@@ -111,13 +150,16 @@ public class Robot extends LoggedRobot {
   @Override
   public void testPeriodic() {}
 
+  @Override
+  public void testExit() {}
+
   /** This function is called once when the robot is first started up. */
   @Override
-  public void simulationInit() {
-    m_robotContainer.simulationInit();
-  }
+  public void simulationInit() {}
 
   /** This function is called periodically whilst in simulation. */
   @Override
-  public void simulationPeriodic() {}
+  public void simulationPeriodic() {
+    m_robotContainer.simulationPeriodic();
+  }
 }
