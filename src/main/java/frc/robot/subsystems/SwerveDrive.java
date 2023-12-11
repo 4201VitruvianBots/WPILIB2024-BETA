@@ -86,7 +86,7 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
   @SuppressWarnings("CanBeFinal")
   private boolean m_simOverride = false; // DO NOT MAKE FINAL. WILL BREAK UNIT TESTS
 
-  private double m_simYaw;
+  private Rotation2d m_simYaw = new Rotation2d();
   private double m_simRoll;
   private DoublePublisher pitchPub, rollPub, yawPub, odometryXPub, odometryYPub, odometryYawPub;
 
@@ -399,13 +399,11 @@ public class SwerveDrive extends SubsystemBase implements AutoCloseable {
 
   @Override
   public void simulationPeriodic() {
-    ChassisSpeeds chassisSpeed =
-        kSwerveKinematics.toChassisSpeeds(
-            ModuleMap.orderedValues(getModuleStates(), new SwerveModuleState[0]));
+    var twist = kSwerveKinematics.toTwist2d(getSwerveDriveModulePositionsArray());
 
-    m_simYaw += chassisSpeed.omegaRadiansPerSecond * RobotTime.getTimeDelta();
+    m_simYaw.plus(new Rotation2d(twist.dtheta));
 
-    m_pigeonSim.setRawYaw(-Units.radiansToDegrees(m_simYaw));
+    m_pigeonSim.setRawYaw(-m_simYaw.getDegrees());
   }
 
   @Override

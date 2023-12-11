@@ -57,6 +57,7 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
   private final StatusSignal<Double> m_driveVelocity;
   private final StatusSignal<Double> m_turnPosition;
   private final StatusSignal<Double> m_turnVelocity;
+  private final StatusSignal<Double> m_turnEncoderAbsolutePosition;
 
   private final SimpleMotorFeedforward feedforward =
       new SimpleMotorFeedforward(
@@ -104,10 +105,11 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
     driveMotorConfig.Feedback.SensorToMechanismRatio = MODULE.kDriveMotorGearRatio;
     configureTalonFx(m_driveMotor, driveMotorConfig);
 
-    m_drivePosition = driveMotor.getPosition().clone();
-    m_driveVelocity = driveMotor.getVelocity().clone();
-    m_turnPosition = turnMotor.getPosition().clone();
-    m_turnVelocity = turnMotor.getVelocity().clone();
+    m_drivePosition = m_driveMotor.getPosition().clone();
+    m_driveVelocity = m_driveMotor.getVelocity().clone();
+    m_turnPosition = m_turnMotor.getPosition().clone();
+    m_turnVelocity = m_turnMotor.getVelocity().clone();
+    m_turnEncoderAbsolutePosition = m_angleEncoder.getAbsolutePosition().clone();
 
     m_lastAngle = getHeadingDegrees();
 
@@ -191,6 +193,11 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
               + ". Error code: "
               + turnMotorStatus);
     }
+  }
+
+  public double getEncoderDegreesAbsolute() {
+    m_turnEncoderAbsolutePosition.refresh();
+    return 360.0 * m_turnEncoderAbsolutePosition.getValue();
   }
 
   public double getHeadingDegrees() {
@@ -280,8 +287,7 @@ public class SwerveModule extends SubsystemBase implements AutoCloseable {
 
   public void updateLog() {
     Logger.recordOutput(
-        "Swerve/Module[" + m_modulePosition + "] Encoder Heading",
-        m_angleEncoder.getAbsolutePosition().getValue() * 360.0);
+        "Swerve/Module[" + m_modulePosition + "] Encoder Heading", getEncoderDegreesAbsolute());
     Logger.recordOutput("Swerve/Module[" + m_modulePosition + "] Angle Offset", m_angleOffset);
     Logger.recordOutput(
         "Swerve/Module[" + m_modulePosition + "] Motor Heading", getHeadingDegrees());

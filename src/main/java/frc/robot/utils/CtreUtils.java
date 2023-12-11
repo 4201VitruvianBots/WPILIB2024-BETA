@@ -15,6 +15,7 @@ public final class CtreUtils {
   public static TalonFXConfiguration generateTurnMotorConfig() {
     TalonFXConfiguration motorConfig = new TalonFXConfiguration();
 
+    motorConfig.ClosedLoopGeneral.ContinuousWrap = true;
     motorConfig.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
     motorConfig.Slot0.kV = 0.0;
     motorConfig.Slot0.kP = 5.0;
@@ -66,8 +67,7 @@ public final class CtreUtils {
   public static CANcoderConfiguration generateCanCoderConfig() {
     CANcoderConfiguration sensorConfig = new CANcoderConfiguration();
 
-    sensorConfig.MagnetSensor.AbsoluteSensorRange =
-        AbsoluteSensorRangeValue.Unsigned_0To1; // TODO Adjust code for this
+    sensorConfig.MagnetSensor.AbsoluteSensorRange = AbsoluteSensorRangeValue.Unsigned_0To1;
     sensorConfig.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
 
     return sensorConfig;
