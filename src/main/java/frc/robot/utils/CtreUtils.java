@@ -15,7 +15,7 @@ public final class CtreUtils {
   public static TalonFXConfiguration generateTurnMotorConfig() {
     TalonFXConfiguration motorConfig = new TalonFXConfiguration();
 
-    motorConfig.ClosedLoopGeneral.ContinuousWrap = true;
+//    motorConfig.ClosedLoopGeneral.ContinuousWrap = true;
     motorConfig.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RotorSensor;
     motorConfig.Slot0.kV = 0.0;
     motorConfig.Slot0.kP = 5.0;
